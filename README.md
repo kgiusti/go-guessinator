@@ -28,4 +28,8 @@ To run with a specific number (debug mode):
 To run the tests:
 ```bash
 go test -v
-``` 
+```
+
+## License
+
+This project is licensed under the [Apache License 2.0](LICENSE). 

@@ -16,8 +16,11 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra" // Import cobra for the dummy command
 )
 
 func TestGame(t *testing.T) {
@@ -109,6 +112,67 @@ Enter your guess (1-100): You Won!
 			// Check if win/lose status matches expected
 			if win != tt.expectedWin {
 				t.Errorf("expected win=%v, got win=%v", tt.expectedWin, win)
+			}
+		})
+	}
+}
+
+func TestDebugGuessRangeValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		expectedError string
+	}{
+		{
+			name:          "Debug guess below minimum (0)",
+			args:          []string{"guessinator", "--debug-guess", "0"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+		{
+			name:          "Debug guess below minimum (-10)",
+			args:          []string{"guessinator", "--debug-guess", "-10"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+		{
+			name:          "Debug guess above maximum (101)",
+			args:          []string{"guessinator", "--debug-guess", "101"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+		{
+			name:          "Debug guess above maximum (200)",
+			args:          []string{"guessinator", "--debug-guess", "200"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save original os.Args and reset it to simulate command line arguments
+			oldArgs := os.Args
+			os.Args = tt.args
+
+			// Restore os.Stderr and os.Args after the test
+			defer func() {
+				os.Args = oldArgs
+			}()
+
+			// Create a dummy cobra command for executeGame
+			cmd := &cobra.Command{}
+			// Add the debug-guess flag to the dummy command so executeGame can find it
+			cmd.Flags().IntVar(&debugGuess, "debug-guess", 0, "Set the secret number for testing (1-100)")
+
+			// Parse the arguments using the dummy command's flags
+			err := cmd.ParseFlags(tt.args[1:]) // Skip the first arg (program name)
+			if err != nil {
+				t.Fatalf("Failed to parse flags: %v", err)
+			}
+
+			// Call the refactored executeGame function
+			gameErr := executeGame(cmd, tt.args)
+
+			// Check if the expected error was returned
+			if gameErr == nil || gameErr.Error() != tt.expectedError {
+				t.Errorf("For args %v, expected error message:\n%q\nGot:\n%q", tt.args, tt.expectedError, gameErr)
 			}
 		})
 	}

@@ -16,6 +16,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -76,20 +77,39 @@ func (g *Game) Play() bool {
 	return false
 }
 
+// executeGame contains the core logic for running the guessing game.
+// It returns an error if there is an issue with flag validation or game setup.
+func executeGame(cmd *cobra.Command, args []string) error {
+	var secret int
+
+	// Check if the debug-guess flag was provided
+	if cmd.Flags().Changed("debug-guess") {
+		// Perform the range check if the flag was provided
+		if debugGuess < 1 || debugGuess > 100 {
+			// Print the error message to stderr and return the error immediately
+			return errors.New("Error: --debug-guess value must be between 1 and 100.")
+		}
+		// If the flag was provided and the value is valid, use it
+		secret = debugGuess
+	} else {
+		// If the flag was not provided, generate a random number
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		secret = r.Intn(100) + 1
+	}
+
+	// ONLY create and play the game if the flag was valid or not provided
+	game := NewGame(secret, os.Stdin, os.Stdout)
+	game.Play()
+	return nil
+}
+
 func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "guessinator",
 		Short: "A number guessing game",
-		Run: func(cmd *cobra.Command, args []string) {
-			var secret int
-			if debugGuess > 0 {
-				secret = debugGuess
-			} else {
-				r := rand.New(rand.NewSource(time.Now().UnixNano()))
-				secret = r.Intn(100) + 1
-			}
-			game := NewGame(secret, os.Stdin, os.Stdout)
-			game.Play()
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Call the refactored executeGame function
+			return executeGame(cmd, args)
 		},
 	}
 

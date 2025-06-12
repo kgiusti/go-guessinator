@@ -16,8 +16,10 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
+	// Import cobra for the dummy command
 )
 
 func TestGame(t *testing.T) {
@@ -109,6 +111,79 @@ Enter your guess (1-100): You Won!
 			// Check if win/lose status matches expected
 			if win != tt.expectedWin {
 				t.Errorf("expected win=%v, got win=%v", tt.expectedWin, win)
+			}
+		})
+	}
+}
+
+func TestDebugGuessRangeValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		args          []string
+		expectedError string
+	}{
+		{
+			name:          "Debug guess below minimum (0)",
+			args:          []string{"guessinator", "--debug-guess", "0"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+		{
+			name:          "Debug guess below minimum (-10)",
+			args:          []string{"guessinator", "--debug-guess", "-10"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+		{
+			name:          "Debug guess above maximum (101)",
+			args:          []string{"guessinator", "--debug-guess", "101"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+		{
+			name:          "Debug guess above maximum (200)",
+			args:          []string{"guessinator", "--debug-guess", "200"},
+			expectedError: "Error: --debug-guess value must be between 1 and 100.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and set os.Args
+			oldArgs := os.Args
+			os.Args = tt.args
+			defer func() { os.Args = oldArgs }()
+
+			// Capture os.Stderr
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			// Run the game in a goroutine and read stderr
+			stderrCh := make(chan string)
+			go func() {
+				var buf bytes.Buffer
+				_, _ = buf.ReadFrom(r)
+				stderrCh <- buf.String()
+			}()
+
+			// Run the command
+			err := rootCmd.Execute()
+
+			// Restore os.Stderr and close the writer
+			w.Close()
+			os.Stderr = oldStderr
+
+			// Get the captured stderr output
+			stderrOutput := <-stderrCh
+
+			// Check if the expected error message was printed to stderr
+			if !strings.Contains(stderrOutput, tt.expectedError) {
+				t.Errorf("For args %v, expected stderr to contain:\n%q\nGot:\n%q", tt.args, tt.expectedError, stderrOutput)
+			}
+
+			// Check that an error was returned from rootCmd.Execute()
+			if err == nil {
+				t.Errorf("For args %v, expected an error to be returned from rootCmd.Execute(), but got nil", tt.args)
+			} else if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("For args %v, expected error string to contain:\n%q\nGot:\n%q", tt.args, tt.expectedError, err.Error())
 			}
 		})
 	}

@@ -19,8 +19,7 @@ import (
 	"os"
 	"strings"
 	"testing"
-
-	"github.com/spf13/cobra" // Import cobra for the dummy command
+	// Import cobra for the dummy command
 )
 
 func TestGame(t *testing.T) {
@@ -147,32 +146,44 @@ func TestDebugGuessRangeValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Save original os.Args and reset it to simulate command line arguments
+			// Save and set os.Args
 			oldArgs := os.Args
 			os.Args = tt.args
+			defer func() { os.Args = oldArgs }()
 
-			// Restore os.Stderr and os.Args after the test
-			defer func() {
-				os.Args = oldArgs
+			// Capture os.Stderr
+			oldStderr := os.Stderr
+			r, w, _ := os.Pipe()
+			os.Stderr = w
+
+			// Run the game in a goroutine and read stderr
+			stderrCh := make(chan string)
+			go func() {
+				var buf bytes.Buffer
+				_, _ = buf.ReadFrom(r)
+				stderrCh <- buf.String()
 			}()
 
-			// Create a dummy cobra command for executeGame
-			cmd := &cobra.Command{}
-			// Add the debug-guess flag to the dummy command so executeGame can find it
-			cmd.Flags().IntVar(&debugGuess, "debug-guess", 0, "Set the secret number for testing (1-100)")
+			// Run the command
+			err := rootCmd.Execute()
 
-			// Parse the arguments using the dummy command's flags
-			err := cmd.ParseFlags(tt.args[1:]) // Skip the first arg (program name)
-			if err != nil {
-				t.Fatalf("Failed to parse flags: %v", err)
+			// Restore os.Stderr and close the writer
+			w.Close()
+			os.Stderr = oldStderr
+
+			// Get the captured stderr output
+			stderrOutput := <-stderrCh
+
+			// Check if the expected error message was printed to stderr
+			if !strings.Contains(stderrOutput, tt.expectedError) {
+				t.Errorf("For args %v, expected stderr to contain:\n%q\nGot:\n%q", tt.args, tt.expectedError, stderrOutput)
 			}
 
-			// Call the refactored executeGame function
-			gameErr := executeGame(cmd, tt.args)
-
-			// Check if the expected error was returned
-			if gameErr == nil || gameErr.Error() != tt.expectedError {
-				t.Errorf("For args %v, expected error message:\n%q\nGot:\n%q", tt.args, tt.expectedError, gameErr)
+			// Check that an error was returned from rootCmd.Execute()
+			if err == nil {
+				t.Errorf("For args %v, expected an error to be returned from rootCmd.Execute(), but got nil", tt.args)
+			} else if !strings.Contains(err.Error(), tt.expectedError) {
+				t.Errorf("For args %v, expected error string to contain:\n%q\nGot:\n%q", tt.args, tt.expectedError, err.Error())
 			}
 		})
 	}
